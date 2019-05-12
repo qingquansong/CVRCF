@@ -40,7 +40,6 @@ class DataSet(object):
                     inputs_idx_pair.append([int(data[0]), int(data[1])])
                 else:
                     self.f.seek(last_pos)
-                    print("date cut")
                     break
             else:
                 self.finish = 1

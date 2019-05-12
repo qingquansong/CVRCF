@@ -1,3 +1,4 @@
+import sys
 import os
 import GPUtil
 import time
@@ -7,6 +8,7 @@ import tensorflow as tf
 import datetime
 from sklearn.metrics import mean_squared_error
 from math import sqrt
+from tqdm import tqdm
 from dataloader import DataSet
 from model import CVRCF
 
@@ -30,7 +32,7 @@ parser.add_argument('--test_gran_v', type=int, default=4, help='item_testing_gra
 parser.add_argument('--max_batch_size', type=int, default=10000000, help='limit batch size when gran_u/v are too big')
 parser.add_argument('--max_t', type=int, default=50, help='max_model_update_iterations_per_training_granularity')
 parser.add_argument('--test_max_t', type=int, default=50, help='max_model_update_iterationss_per_testing_granularity')
-parser.add_argument('--gpu', type=int, default=1, help='gpu device id')
+parser.add_argument('--gpu', type=int, default=None, help='gpu device id')
 
 # model architecture hyperparameters
 # currently implementation requires: for either user or item the stationary factor and dynamic factors
@@ -68,10 +70,6 @@ def test_one_step(test_data, model, sess, pred_all, hidden_U, hidden_V,
         test_sp_v_indices_res, test_sp_v_shape_res, test_sp_v_val_res, \
         test_inputs_u_idx, test_inputs_v_idx, \
         test_inputs_idx_pair, test_all_data = test_data.get_batch_data()
-
-        print('Read Finish!\n')
-        print(test_inputs_idx_pair.shape)
-        print(np.max(test_inputs_idx_pair, 0))
 
         siz = test_all_data.shape
         mark_new_user_movie = np.zeros([siz[0], 2])
@@ -126,39 +124,33 @@ def test_one_step(test_data, model, sess, pred_all, hidden_U, hidden_V,
             MSE.append(mean_squared_error(real_ratings1, pred_ratings1))
             RMSE.append(sqrt(MSE[-1]))
             N.append(len(real_ratings1))
-            print(MSE[-1])
-            print(RMSE[-1])
+            print('MSE w/o new users & items: ', MSE[-1])
+            print('RMSE w/o new users & items: ', RMSE[-1])
             np.save("results/N_ml_10M.npy", np.array(N))
             np.save("results/MSE_ml_10M.npy", np.array(MSE))
             np.save("results/RMSE_ml_10M.npy", np.array(RMSE))
         else:
             MSE = mean_squared_error(real_ratings1, pred_ratings1)
             RMSE = sqrt(MSE)
-            print(MSE)
-            print(RMSE)
-            np.save("results/N1_ml_10M.npy", np.array(N1))
-            np.save("results/MSE1_ml_10M.npy", np.array(MSE1))
-            np.save("results/RMSE1_ml_10M.npy", np.array(RMSE1))
-        print(real_ratings[0:20])
-        print(pred_ratings[0:20])
-        print('\n')
+            # print('MSE w/o new users & items: ', MSE)
+            # print('RMSE w/o new users & items: ', RMSE)
 
         real_ratings = test_all_data[:, 2]
         if MSE1 is not None:
             MSE1.append(mean_squared_error(real_ratings, pred_ratings))
             RMSE1.append(sqrt(MSE1[-1]))
             N1.append(len(real_ratings))
-            print(MSE1[-1])
-            print(RMSE1[-1])
+            print('MSE with new users & items: ', MSE1[-1])
+            print('RMSE with new users & items: ', RMSE1[-1])
+            np.save("results/N1_ml_10M.npy", np.array(N1))
+            np.save("results/MSE1_ml_10M.npy", np.array(MSE1))
+            np.save("results/RMSE1_ml_10M.npy", np.array(RMSE1))
         else:
             MSE1 = mean_squared_error(real_ratings, pred_ratings)
             RMSE1 = sqrt(MSE1)
-            print(MSE1)
-            print(RMSE1)
-        print(real_ratings[0:20])
-        print(pred_ratings[0:20])
-        print('\n')
-    return test_data
+            # print('MSE with new users & items: ', MSE1)
+            # print('RMSE with new users & items: ', RMSE1)
+    return test_data, MSE, RMSE
 
 
 def testing_phase(model, sess, train_all, pred_all, mark_u_time_end, mark_v_time_end, hidden_U, hidden_V):
@@ -168,10 +160,9 @@ def testing_phase(model, sess, train_all, pred_all, mark_u_time_end, mark_v_time
     g = 0
     while test_data.finish != 1:
         g += 1
-        print(g)
 
         # Test
-        test_data = test_one_step(test_data, model, sess, pred_all, hidden_U, hidden_V, MSE, RMSE, MSE1, RMSE1, N, N1)
+        test_datatesting_ph, _, _ = test_one_step(test_data, model, sess, pred_all, hidden_U, hidden_V, MSE, RMSE, MSE1, RMSE1, N, N1)
 
         # Updating
         sp_u_indices, sp_u_shape, sp_u_val, \
@@ -180,10 +171,6 @@ def testing_phase(model, sess, train_all, pred_all, mark_u_time_end, mark_v_time
         sp_v_indices_res, sp_v_shape_res, sp_v_val_res, \
         inputs_u_idx, inputs_v_idx, \
         inputs_idx_pair, all_data = train_data.get_batch_data()
-
-        print('Read Finish!\n')
-        print(inputs_idx_pair.shape)
-        print(np.max(inputs_idx_pair, 0))
 
         tmp_u = np.concatenate((sp_u_indices, np.expand_dims(sp_u_val, axis=1)), axis=1)
         tmp_v = np.concatenate((sp_v_indices, np.expand_dims(sp_v_val, axis=1)), axis=1)
@@ -196,11 +183,10 @@ def testing_phase(model, sess, train_all, pred_all, mark_u_time_end, mark_v_time
 
         loss0, loss = 0, 100
         t = 0
+        pbar = tqdm(total = args.test_max_t)
         while abs(loss - loss0) / abs(loss) > 1e-2 and t < args.test_max_t:
             t += 1
-            print('qq')
-            print(t)
-            print('qq')
+            pbar.update(1)
             _, loss, hidden_us, hidden_vs \
                 = sess.run([train_all['train_op'], train_all['elbo'], train_all['hidden_us'], train_all['hidden_vs']],
                            feed_dict={model.inputs_u: (sp_u_indices, sp_u_val, sp_u_shape),
@@ -217,7 +203,9 @@ def testing_phase(model, sess, train_all, pred_all, mark_u_time_end, mark_v_time
                                       model.inputs_v_idx: inputs_v_idx,
                                       model.inputs_idx_pair: inputs_idx_pair[:, 0:4],
                                       model.ratings: inputs_idx_pair[:, 4]})
-            print('loss: {}'.format(loss))
+            pbar.set_description('Testing Batch: %d, loss = %g' % (g, loss))
+        pbar.close()
+        sys.stdout.flush()
 
         for i in range(inputs_u_idx.shape[0]):
             tmp_idx = int(max(inputs_idx_pair[inputs_idx_pair[:, 0] == i, 2]))
@@ -229,8 +217,10 @@ def testing_phase(model, sess, train_all, pred_all, mark_u_time_end, mark_v_time
 
 def main(args):
     # Select running device
-    # select_gpu()
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
+    if args.gpu is None:
+        select_gpu()
+    else:
+        os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
 
     # Initialize the latent factors
     hidden_U = np.zeros([args.num_of_u, args.hidden_state_siz_u])
@@ -256,6 +246,7 @@ def main(args):
     sess.run(init)
 
     # Model training
+    RMSE = float('inf')
     for epoch in range(1, args.n_epoch + 1):
         dd = 0
         mark_u_time_end = np.zeros(args.num_of_u)
@@ -267,8 +258,8 @@ def main(args):
         # Skip the first batch for testing purpose
         test_data.get_batch_data()
 
-        print(epoch)
         start_time = time.time()
+
         while train_data.finish != 1:
 
             # Run optimization op (backprop)
@@ -288,20 +279,13 @@ def main(args):
             re_sp_u_ids, u_seg_ids = np.unique(sp_u_indices[:, 0:2], axis=0, return_inverse=True)
             re_sp_v_ids, v_seg_ids = np.unique(sp_v_indices[:, 0:2], axis=0, return_inverse=True)
 
-            print('Read Finish!\n')
             dd += 1
-            print(dd)
-
-            print(inputs_idx_pair.shape)
-            print(np.max(inputs_idx_pair, 0))
-
             loss0, loss = 0, 100
             t = 0
+            pbar = tqdm(total = args.max_t)
             while abs(loss - loss0) / abs(loss) > 1e-2 and t < args.max_t:
                 t += 1
-                print('qq')
-                print(t)
-                print('qq')
+                pbar.update(1)
                 _, loss, hidden_us, hidden_vs = sess.run([train_all['train_op'], train_all['elbo'],
                                                           train_all['hidden_us'], train_all['hidden_vs']],
                                                          feed_dict={
@@ -321,7 +305,9 @@ def main(args):
                                                              model.inputs_v_idx: inputs_v_idx,
                                                              model.inputs_idx_pair: inputs_idx_pair[:, 0:4],
                                                              model.ratings: inputs_idx_pair[:, 4]})
-                print('loss: {}'.format(loss))
+                pbar.set_description('Training Epoch: %d, Batch: %d, loss = %.3g, RMSE = %.3g' % (epoch, dd, loss, RMSE))
+            pbar.close()
+            sys.stdout.flush()
 
             for i in range(inputs_u_idx.shape[0]):
                 tmp_idx = int(max(inputs_idx_pair[inputs_idx_pair[:, 0] == i, 2]))
@@ -332,7 +318,7 @@ def main(args):
 
             # Test
             test_data = DataSet('data/test.txt', args, train_data.mark_u_time_end, train_data.mark_v_time_end)
-            test_data = test_one_step(test_data, model, sess, pred_all, hidden_U, hidden_V)
+            test_data, MSE, RMSE = test_one_step(test_data, model, sess, pred_all, hidden_U, hidden_V)
 
         if not (train_data.finish == 0 or epoch == args.n_epoch):
             # Reinitialize to default value after finishing one epoch
