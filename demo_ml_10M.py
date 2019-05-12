@@ -20,7 +20,7 @@ parser.add_argument('--rating_lower_bound', type=int, default=0, help='rating_lo
 
 # experimental hyperparameters.
 parser.add_argument('--lr', type=float, default=1e-3, help='learning_rate')
-parser.add_argument('--n_epoch', type=int, default=1, help='num_of_training_epoch (used only in training phase)')
+parser.add_argument('--n_epoch', type=int, default=3, help='num_of_training_epoch (used only in training phase)')
 parser.add_argument('--time_interval', type=int, default=20, help='training_batch_granularity (# of weeks)')
 parser.add_argument('--test_time_interval', type=int, default=4, help='testing_batch_granularity (# of weeks)')
 parser.add_argument('--gran_u', type=int, default=4, help='user_training_granularity (# of weeks)')
@@ -28,7 +28,7 @@ parser.add_argument('--gran_v', type=int, default=4, help='item_training_granula
 parser.add_argument('--test_gran_u', type=int, default=4, help='user_testing_granularity (# of weeks)')
 parser.add_argument('--test_gran_v', type=int, default=4, help='item_testing_granularity (# of weeks)')
 parser.add_argument('--max_batch_size', type=int, default=10000000, help='limit batch size when gran_u/v are too big')
-parser.add_argument('--max_t', type=int, default=20, help='max_model_update_iterations_per_training_granularity')
+parser.add_argument('--max_t', type=int, default=50, help='max_model_update_iterations_per_training_granularity')
 parser.add_argument('--test_max_t', type=int, default=50, help='max_model_update_iterationss_per_testing_granularity')
 parser.add_argument('--gpu', type=int, default=1, help='gpu device id')
 
