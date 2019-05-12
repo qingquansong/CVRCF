@@ -335,6 +335,16 @@ def main(args):
     # Testing Phase
     testing_phase(model, sess, train_all, pred_all, mark_u_time_end, mark_v_time_end, hidden_U, hidden_V)
 
+    # Final Performance
+    N = np.load("results/N_ml_10M.npy")
+    N1 = np.load("results/N1_ml_10M.npy")
+    RMSE = np.load("results/RMSE_ml_10M.npy")
+    RMSE1 = np.load("results/RMSE1_ml_10M.npy")
+    avg_RMSE = np.sqrt(np.sum(RMSE ** 2 * N)/np.sum(N))
+    avg_RMSE1 = np.sqrt(np.sum(RMSE1 ** 2 * N1)/np.sum(N1))
+    print('Average RMSE w/o new users & items: ', avg_RMSE)
+    print('Average RMSE with new users & items: ', avg_RMSE1)
+
 
 if __name__ == "__main__":
     args = parser.parse_args()

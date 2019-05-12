@@ -1,6 +1,4 @@
-import numpy as np
 import tensorflow as tf
-import datetime
 
 STD = 1e-2
 
