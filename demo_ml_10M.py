@@ -146,7 +146,7 @@ def test_one_step(test_data, model, sess, pred_all, hidden_U, hidden_V,
         real_ratings = test_all_data[:, 2]
         if MSE1 is not None:
             MSE1.append(mean_squared_error(real_ratings, pred_ratings))
-            RMSE1.append(sqrt(MSE1))
+            RMSE1.append(sqrt(MSE1[-1]))
             N1.append(len(real_ratings))
             print(MSE1[-1])
             print(RMSE1[-1])
