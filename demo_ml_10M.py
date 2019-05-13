@@ -5,7 +5,6 @@ import time
 import argparse
 import numpy as np
 import tensorflow as tf
-import datetime
 from sklearn.metrics import mean_squared_error
 from math import sqrt
 from tqdm import tqdm
@@ -22,7 +21,7 @@ parser.add_argument('--rating_lower_bound', type=int, default=0, help='rating_lo
 
 # experimental hyperparameters.
 parser.add_argument('--lr', type=float, default=1e-3, help='learning_rate')
-parser.add_argument('--n_epoch', type=int, default=3, help='num_of_training_epoch (used only in training phase)')
+parser.add_argument('--n_epoch', type=int, default=10, help='num_of_training_epoch (used only in training phase)')
 parser.add_argument('--time_interval', type=int, default=20, help='training_batch_granularity (# of weeks)')
 parser.add_argument('--test_time_interval', type=int, default=4, help='testing_batch_granularity (# of weeks)')
 parser.add_argument('--gran_u', type=int, default=4, help='user_training_granularity (# of weeks)')
@@ -30,7 +29,7 @@ parser.add_argument('--gran_v', type=int, default=4, help='item_training_granula
 parser.add_argument('--test_gran_u', type=int, default=4, help='user_testing_granularity (# of weeks)')
 parser.add_argument('--test_gran_v', type=int, default=4, help='item_testing_granularity (# of weeks)')
 parser.add_argument('--max_batch_size', type=int, default=10000000, help='limit batch size when gran_u/v are too big')
-parser.add_argument('--max_t', type=int, default=50, help='max_model_update_iterations_per_training_granularity')
+parser.add_argument('--max_t', type=int, default=20, help='max_model_update_iterations_per_training_granularity')
 parser.add_argument('--test_max_t', type=int, default=50, help='max_model_update_iterationss_per_testing_granularity')
 parser.add_argument('--gpu', type=int, default=None, help='gpu device id')
 
@@ -61,65 +60,87 @@ def select_gpu():
         print("GPU not found")
 
 
-def test_one_step(test_data, model, sess, pred_all, hidden_U, hidden_V, 
+def get_batch_data(data):
+    test_sp_u_indices, test_sp_u_shape, test_sp_u_val, \
+    test_sp_u_indices_res, test_sp_u_shape_res, test_sp_u_val_res, \
+    test_sp_v_indices, test_sp_v_shape, test_sp_v_val, \
+    test_sp_v_indices_res, test_sp_v_shape_res, test_sp_v_val_res, \
+    test_inputs_u_idx, test_inputs_v_idx, \
+    test_inputs_idx_pair, test_all_data = data.get_batch_data()
+
+    siz = test_all_data.shape
+    mark_new_user_movie = np.zeros([siz[0], 2])
+
+    tmp_u = np.concatenate((test_sp_u_indices, np.expand_dims(test_sp_u_val, axis=1)), axis=1)
+    tmp_v = np.concatenate((test_sp_v_indices, np.expand_dims(test_sp_v_val, axis=1)), axis=1)
+    tmp_u.view('i8,i8,i8,i8').sort(order=['f0', 'f1', 'f2'], axis=0)
+    tmp_v.view('i8,i8,i8,i8').sort(order=['f0', 'f1', 'f2'], axis=0)
+    test_sp_u_indices, test_sp_u_val = tmp_u[:, 0:3], tmp_u[:, 3]
+    test_sp_v_indices, test_sp_v_val = tmp_v[:, 0:3], tmp_v[:, 3]
+    test_re_sp_u_ids, test_u_seg_ids = np.unique(test_sp_u_indices[:, 0:2], axis=0, return_inverse=True)
+    test_re_sp_v_ids, test_v_seg_ids = np.unique(test_sp_v_indices[:, 0:2], axis=0, return_inverse=True)
+
+    return data, [test_sp_u_indices, test_sp_u_shape, test_sp_u_val,
+                  test_sp_u_indices_res, test_sp_u_shape_res, test_sp_u_val_res,
+                  test_sp_v_indices, test_sp_v_shape, test_sp_v_val,
+                  test_sp_v_indices_res, test_sp_v_shape_res, test_sp_v_val_res,
+                  test_inputs_u_idx, test_inputs_v_idx, test_inputs_idx_pair, test_all_data,
+                  siz, mark_new_user_movie,
+                  test_re_sp_u_ids, test_u_seg_ids, test_re_sp_v_ids, test_v_seg_ids]
+
+
+def test_one_step(batch_all, model, sess, pred_all, hidden_U, hidden_V,
                   MSE=None, RMSE=None, MSE1=None, RMSE1=None, N=None, N1=None):
-    if test_data.finish != 1:
-        test_sp_u_indices, test_sp_u_shape, test_sp_u_val, \
-        test_sp_u_indices_res, test_sp_u_shape_res, test_sp_u_val_res, \
-        test_sp_v_indices, test_sp_v_shape, test_sp_v_val, \
-        test_sp_v_indices_res, test_sp_v_shape_res, test_sp_v_val_res, \
-        test_inputs_u_idx, test_inputs_v_idx, \
-        test_inputs_idx_pair, test_all_data = test_data.get_batch_data()
 
-        siz = test_all_data.shape
-        mark_new_user_movie = np.zeros([siz[0], 2])
+    test_sp_u_indices, test_sp_u_shape, test_sp_u_val, \
+    test_sp_u_indices_res, test_sp_u_shape_res, test_sp_u_val_res, \
+    test_sp_v_indices, test_sp_v_shape, test_sp_v_val, \
+    test_sp_v_indices_res, test_sp_v_shape_res, test_sp_v_val_res, \
+    test_inputs_u_idx, test_inputs_v_idx, \
+    test_inputs_idx_pair, test_all_data, \
+    siz, mark_new_user_movie, \
+    test_re_sp_u_ids, test_u_seg_ids, \
+    test_re_sp_v_ids, test_v_seg_ids = batch_all
 
-        tmp_u = np.concatenate((test_sp_u_indices, np.expand_dims(test_sp_u_val, axis=1)), axis=1)
-        tmp_v = np.concatenate((test_sp_v_indices, np.expand_dims(test_sp_v_val, axis=1)), axis=1)
-        tmp_u.view('i8,i8,i8,i8').sort(order=['f0', 'f1', 'f2'], axis=0)  #
-        tmp_v.view('i8,i8,i8,i8').sort(order=['f0', 'f1', 'f2'], axis=0)  #
-        test_sp_u_indices, test_sp_u_val = tmp_u[:, 0:3], tmp_u[:, 3]
-        test_sp_v_indices, test_sp_v_val = tmp_v[:, 0:3], tmp_v[:, 3]
-        test_re_sp_u_ids, test_u_seg_ids = np.unique(test_sp_u_indices[:, 0:2], axis=0, return_inverse=True)
-        test_re_sp_v_ids, test_v_seg_ids = np.unique(test_sp_v_indices[:, 0:2], axis=0, return_inverse=True)
+    # Get Predictions
+    pred_ratings, sig = sess.run([pred_all['mean'], pred_all['var']],
+                                 feed_dict={
+                                     model.inputs_u: (test_sp_u_indices, test_sp_u_val, test_sp_u_shape),
+                                     model.inputs_v: (test_sp_v_indices, test_sp_v_val, test_sp_v_shape),
+                                     model.inputs_u_res_1: (
+                                         test_sp_u_indices_res, test_sp_u_val_res, test_sp_u_shape_res),
+                                     model.inputs_v_res_1: (
+                                         test_sp_v_indices_res, test_sp_v_val_res, test_sp_v_shape_res),
+                                     model.re_sp_u_ids: test_re_sp_u_ids,
+                                     model.u_seg_ids: test_u_seg_ids,
+                                     model.re_sp_v_ids: test_re_sp_v_ids,
+                                     model.v_seg_ids: test_v_seg_ids,
+                                     model.h_U: hidden_U[test_inputs_u_idx, :],
+                                     model.h_V: hidden_V[test_inputs_v_idx, :],
+                                     model.inputs_u_idx: test_inputs_u_idx,
+                                     model.inputs_v_idx: test_inputs_v_idx,
+                                     model.inputs_idx_pair: test_inputs_idx_pair[:, 0:4],
+                                     model.ratings: test_inputs_idx_pair[:, 4]})
 
-        pred_ratings, sig = sess.run([pred_all['mean'], pred_all['var']],
-                                     feed_dict={
-                                         model.inputs_u: (test_sp_u_indices, test_sp_u_val, test_sp_u_shape),
-                                         model.inputs_v: (test_sp_v_indices, test_sp_v_val, test_sp_v_shape),
-                                         model.inputs_u_res_1: (
-                                             test_sp_u_indices_res, test_sp_u_val_res, test_sp_u_shape_res),
-                                         model.inputs_v_res_1: (
-                                             test_sp_v_indices_res, test_sp_v_val_res, test_sp_v_shape_res),
-                                         model.re_sp_u_ids: test_re_sp_u_ids,
-                                         model.u_seg_ids: test_u_seg_ids,
-                                         model.re_sp_v_ids: test_re_sp_v_ids,
-                                         model.v_seg_ids: test_v_seg_ids,
-                                         model.h_U: hidden_U[test_inputs_u_idx, :],
-                                         model.h_V: hidden_V[test_inputs_v_idx, :],
-                                         model.inputs_u_idx: test_inputs_u_idx,
-                                         model.inputs_v_idx: test_inputs_v_idx,
-                                         model.inputs_idx_pair: test_inputs_idx_pair[:, 0:4],
-                                         model.ratings: test_inputs_idx_pair[:, 4]})
+    qq0, qq1 = {}, {}
+    for i in range(siz[0]):
+        if int(test_all_data[i, 4]) == 0:
+            mark_new_user_movie[i, 0] = 1
+            qq0[test_all_data[i, 0]] = 1
+        if int(test_all_data[i, 5]) == 0:
+            mark_new_user_movie[i, 1] = 1
+            qq1[test_all_data[i, 1]] = 1
 
-        qq0, qq1 = [], []
-        for i in range(siz[0]):
-            if int(test_all_data[i, 4]) == 0:
-                mark_new_user_movie[i, 0] = 1
-                qq0.append(test_all_data[i, 0])
-            if int(test_all_data[i, 5]) == 0:
-                mark_new_user_movie[i, 1] = 1
-                qq1.append(test_all_data[i, 1])
+    for i in range(siz[0]):
+        if test_all_data[i, 0] in qq0:
+            mark_new_user_movie[i, 0] = 1
+        if test_all_data[i, 1] in qq1:
+            mark_new_user_movie[i, 1] = 1
 
-        for i in range(siz[0]):
-            if test_all_data[i, 0] in qq0:
-                mark_new_user_movie[i, 0] = 1
-            if test_all_data[i, 1] in qq1:
-                mark_new_user_movie[i, 1] = 1
-
-        real_ratings = test_all_data[:, 2] * (1 - mark_new_user_movie[:, 0]) * (1 - mark_new_user_movie[:, 1])
-        real_ratings1 = real_ratings[real_ratings != 0]
-        pred_ratings1 = pred_ratings[real_ratings != 0]
+    real_ratings = test_all_data[:, 2] * (1 - mark_new_user_movie[:, 0]) * (1 - mark_new_user_movie[:, 1])
+    real_ratings1 = real_ratings[real_ratings != 0]
+    pred_ratings1 = pred_ratings[real_ratings != 0]
+    try:
         if MSE is not None:
             MSE.append(mean_squared_error(real_ratings1, pred_ratings1))
             RMSE.append(sqrt(MSE[-1]))
@@ -132,9 +153,11 @@ def test_one_step(test_data, model, sess, pred_all, hidden_U, hidden_V,
         else:
             MSE = mean_squared_error(real_ratings1, pred_ratings1)
             RMSE = sqrt(MSE)
-            # print('MSE w/o new users & items: ', MSE)
-            # print('RMSE w/o new users & items: ', RMSE)
+    except:
+        MSE = float('inf')
+        RMSE = float('inf')
 
+    try:
         real_ratings = test_all_data[:, 2]
         if MSE1 is not None:
             MSE1.append(mean_squared_error(real_ratings, pred_ratings))
@@ -148,21 +171,25 @@ def test_one_step(test_data, model, sess, pred_all, hidden_U, hidden_V,
         else:
             MSE1 = mean_squared_error(real_ratings, pred_ratings)
             RMSE1 = sqrt(MSE1)
-            # print('MSE with new users & items: ', MSE1)
-            # print('RMSE with new users & items: ', RMSE1)
-    return test_data, MSE, RMSE
+    except:
+        MSE1 = float('inf')
+        RMSE1 = float('inf')
+
+    return MSE, RMSE, MSE1, RMSE1
 
 
 def testing_phase(model, sess, train_all, pred_all, mark_u_time_end, mark_v_time_end, hidden_U, hidden_V):
     MSE, RMSE, MSE1, RMSE1, N, N1 = [], [], [], [], [], []
-    train_data = DataSet('data/test.txt', args, mark_u_time_end, mark_v_time_end)
-    test_data = DataSet('data/test.txt', args, train_data.mark_u_time_end, train_data.mark_v_time_end)
+    test_data = DataSet('data/test.txt', args, mark_u_time_end, mark_v_time_end)
     g = 0
     while test_data.finish != 1:
         g += 1
 
+        # Get Data Batch
+        data, batch_all = get_batch_data(test_data)
+
         # Test
-        test_datatesting_ph, _, _ = test_one_step(test_data, model, sess, pred_all, hidden_U, hidden_V, MSE, RMSE, MSE1, RMSE1, N, N1)
+        test_one_step(batch_all, model, sess, pred_all, hidden_U, hidden_V, MSE, RMSE, MSE1, RMSE1, N, N1)
 
         # Updating
         sp_u_indices, sp_u_shape, sp_u_val, \
@@ -170,20 +197,15 @@ def testing_phase(model, sess, train_all, pred_all, mark_u_time_end, mark_v_time
         sp_v_indices, sp_v_shape, sp_v_val, \
         sp_v_indices_res, sp_v_shape_res, sp_v_val_res, \
         inputs_u_idx, inputs_v_idx, \
-        inputs_idx_pair, all_data = train_data.get_batch_data()
+        inputs_idx_pair, all_data, \
+        siz, mark_new_user_movie, \
+        re_sp_u_ids, u_seg_ids, \
+        re_sp_v_ids, v_seg_ids = batch_all
 
-        tmp_u = np.concatenate((sp_u_indices, np.expand_dims(sp_u_val, axis=1)), axis=1)
-        tmp_v = np.concatenate((sp_v_indices, np.expand_dims(sp_v_val, axis=1)), axis=1)
-        tmp_u.view('i8,i8,i8,i8').sort(order=['f0', 'f1', 'f2'], axis=0)  #
-        tmp_v.view('i8,i8,i8,i8').sort(order=['f0', 'f1', 'f2'], axis=0)  #
-        sp_u_indices, sp_u_val = tmp_u[:, 0:3], tmp_u[:, 3]
-        sp_v_indices, sp_v_val = tmp_v[:, 0:3], tmp_v[:, 3]
-        re_sp_u_ids, u_seg_ids = np.unique(sp_u_indices[:, 0:2], axis=0, return_inverse=True)
-        re_sp_v_ids, v_seg_ids = np.unique(sp_v_indices[:, 0:2], axis=0, return_inverse=True)
 
         loss0, loss = 0, 100
         t = 0
-        pbar = tqdm(total = args.test_max_t)
+        pbar = tqdm(total=args.test_max_t)
         while abs(loss - loss0) / abs(loss) > 1e-2 and t < args.test_max_t:
             t += 1
             pbar.update(1)
@@ -246,21 +268,22 @@ def main(args):
     sess.run(init)
 
     # Model training
-    RMSE = float('inf')
     for epoch in range(1, args.n_epoch + 1):
         dd = 0
         mark_u_time_end = np.zeros(args.num_of_u)
         mark_v_time_end = np.zeros(args.num_of_v)
 
         train_data = DataSet('data/train.txt', args, mark_u_time_end, mark_v_time_end)
-        test_data = DataSet('data/train.txt', args, train_data.mark_u_time_end, train_data.mark_v_time_end)
-
-        # Skip the first batch for testing purpose
-        test_data.get_batch_data()
 
         start_time = time.time()
 
         while train_data.finish != 1:
+
+            # Get Data Batch
+            data, batch_all = get_batch_data(train_data)
+
+            # Test
+            MSE, RMSE, MSE1, RMSE1 = test_one_step(batch_all, model, sess, pred_all, hidden_U, hidden_V)
 
             # Run optimization op (backprop)
             sp_u_indices, sp_u_shape, sp_u_val, \
@@ -268,21 +291,15 @@ def main(args):
             sp_v_indices, sp_v_shape, sp_v_val, \
             sp_v_indices_res, sp_v_shape_res, sp_v_val_res, \
             inputs_u_idx, inputs_v_idx, \
-            inputs_idx_pair, all_data = train_data.get_batch_data()
-
-            tmp_u = np.concatenate((sp_u_indices, np.expand_dims(sp_u_val, axis=1)), axis=1)
-            tmp_v = np.concatenate((sp_v_indices, np.expand_dims(sp_v_val, axis=1)), axis=1)
-            tmp_u.view('i8,i8,i8,i8').sort(order=['f0', 'f1', 'f2'], axis=0)  #
-            tmp_v.view('i8,i8,i8,i8').sort(order=['f0', 'f1', 'f2'], axis=0)  #
-            sp_u_indices, sp_u_val = tmp_u[:, 0:3], tmp_u[:, 3]
-            sp_v_indices, sp_v_val = tmp_v[:, 0:3], tmp_v[:, 3]
-            re_sp_u_ids, u_seg_ids = np.unique(sp_u_indices[:, 0:2], axis=0, return_inverse=True)
-            re_sp_v_ids, v_seg_ids = np.unique(sp_v_indices[:, 0:2], axis=0, return_inverse=True)
+            inputs_idx_pair, all_data, \
+            siz, mark_new_user_movie, \
+            re_sp_u_ids, u_seg_ids, \
+            re_sp_v_ids, v_seg_ids = batch_all
 
             dd += 1
             loss0, loss = 0, 100
             t = 0
-            pbar = tqdm(total = args.max_t)
+            pbar = tqdm(total=args.max_t)
             while abs(loss - loss0) / abs(loss) > 1e-2 and t < args.max_t:
                 t += 1
                 pbar.update(1)
@@ -305,7 +322,8 @@ def main(args):
                                                              model.inputs_v_idx: inputs_v_idx,
                                                              model.inputs_idx_pair: inputs_idx_pair[:, 0:4],
                                                              model.ratings: inputs_idx_pair[:, 4]})
-                pbar.set_description('Training Epoch: %d, Batch: %d, loss = %.3g, RMSE = %.3g' % (epoch, dd, loss, RMSE))
+                pbar.set_description(
+                    'Training Epoch: %d, Batch: %d, loss = %.3g, RMSE = %.3g' % (epoch, dd, loss, RMSE))
             pbar.close()
             sys.stdout.flush()
 
@@ -316,10 +334,6 @@ def main(args):
                 tmp_idx = int(max(inputs_idx_pair[inputs_idx_pair[:, 1] == j, 3]))
                 hidden_V[inputs_v_idx[j], :] = hidden_vs[j, tmp_idx, :]
 
-            # Test
-            test_data = DataSet('data/test.txt', args, train_data.mark_u_time_end, train_data.mark_v_time_end)
-            test_data, MSE, RMSE = test_one_step(test_data, model, sess, pred_all, hidden_U, hidden_V)
-
         if not (train_data.finish == 0 or epoch == args.n_epoch):
             # Reinitialize to default value after finishing one epoch
             print("\n One Epoch Finished! \n")
@@ -328,7 +342,6 @@ def main(args):
 
         print("--- %s seconds ---" % (time.time() - start_time))
 
-        test_data.finish = 0
         train_data.finish = 0
     print("Optimization Finished!")
 
@@ -340,8 +353,8 @@ def main(args):
     N1 = np.load("results/N1_ml_10M.npy")
     RMSE = np.load("results/RMSE_ml_10M.npy")
     RMSE1 = np.load("results/RMSE1_ml_10M.npy")
-    avg_RMSE = np.sqrt(np.sum(RMSE ** 2 * N)/np.sum(N))
-    avg_RMSE1 = np.sqrt(np.sum(RMSE1 ** 2 * N1)/np.sum(N1))
+    avg_RMSE = np.sqrt(np.sum(RMSE ** 2 * N) / np.sum(N))
+    avg_RMSE1 = np.sqrt(np.sum(RMSE1 ** 2 * N1) / np.sum(N1))
     print('Average RMSE w/o new users & items: ', avg_RMSE)
     print('Average RMSE with new users & items: ', avg_RMSE1)
 

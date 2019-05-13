@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 
 class DataSet(object):
@@ -16,6 +17,8 @@ class DataSet(object):
         self.mark_v_time_end = mark_v_time_end
 
     def get_batch_data(self):
+        b = time.time()
+
         all_data = []
         inputs_u_idx = []
         inputs_v_idx = []
@@ -58,6 +61,7 @@ class DataSet(object):
         tmp = np.concatenate((inputs_idx_pair, np.array(range(siz[0]), ndmin=2).T
                               , np.zeros([siz[0], 2]), np.expand_dims(all_data[:, 2], 1)), axis=1)
         tmp = tmp[tmp[:, 0].argsort()]
+
         # Map user indices
         u_idx = -1
         mark = 0
@@ -69,9 +73,9 @@ class DataSet(object):
                 u_idx += 1
                 tmp[i, 0] = u_idx
 
-        tmp = tmp[tmp[:, 1].argsort()]
+        tmp = tmp[tmp[:, 1].argsort()]  # Reorder to the original order
 
-        # Map user indices
+        # Map item indices
         v_idx = -1
         mark = 0
         for i in range(siz[0]):
@@ -81,9 +85,7 @@ class DataSet(object):
                 mark = int(tmp[i, 1])
                 v_idx += 1
                 tmp[i, 1] = v_idx
-
-        # Reorder to the original order
-        tmp = tmp[tmp[:, 2].argsort()]
+        tmp = tmp[tmp[:, 2].argsort()]  # Reorder to the original order
 
         u_time = np.zeros(inputs_u_idx.shape[0])-1
         v_time = np.zeros(inputs_v_idx.shape[0])-1
@@ -184,6 +186,7 @@ class DataSet(object):
         sp_v_indices_res = np.asarray(sp_v_indices_res, dtype=np.int32)
         sp_v_val_res = np.asarray(sp_v_val_res)
 
+        print('Total Batch Cut Time:', time.time() - b)
         return sp_u_indices, sp_u_shape, sp_u_val, sp_u_indices_res, sp_u_shape_res, sp_u_val_res,\
                sp_v_indices, sp_v_shape, sp_v_val, sp_v_indices_res, sp_v_shape_res, sp_v_val_res,\
                inputs_u_idx, inputs_v_idx, tmp[:, [0, 1, 3, 4, 5]], all_data
