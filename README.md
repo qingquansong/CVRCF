@@ -21,7 +21,7 @@ The six columns correspond to:
 ```
 user_id  item_id  rating  timestamp user_last_rating_timestamp  item_last_rated_timestamp
 ```
-
+Each file is sorted based on the timestamp in the fourth column. The '0' elements in the fifth or the sixth column represent the new users or new items. 
 
 ## Second Step:
 In command line run:
