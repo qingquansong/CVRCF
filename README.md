@@ -1,5 +1,5 @@
 # Coupled Variational Recurrent Collaborative Filtering
-Code of KDD 2019 paper [Coupled Variational Recurrent Collaborative Filtering](to_be_added).
+Code of KDD 2019 paper [Coupled Variational Recurrent Collaborative Filtering](https://arxiv.org/pdf/1906.04386.pdf).
 
 
 ## First Step:
