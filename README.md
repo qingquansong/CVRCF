@@ -3,7 +3,7 @@ Code of KDD 2019 paper [Coupled Variational Recurrent Collaborative Filtering](h
 
 
 ## First Step:
-Download Data from https://drive.google.com/open?id=1O44RzjoaCDdy0I84hhKmvnunF0oNmNtX and put them in the 'data' folder. Each txt file has six columns as follows:
+Download Data from https://drive.google.com/drive/folders/1HeudBdACXQHSYTb04fNQNk7mVxiBGq7C?usp=sharing and put them in the 'data' folder. Each txt file has six columns as follows:
 ```
 36955 21  3 789652009 0 0
 36955 47  5 789652009 789652009 0
