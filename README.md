@@ -28,3 +28,19 @@ In command line run:
 ```
 sh ml_10M.sh
 ```
+
+## Cite this work
+
+Qingquan Song, Shiyu Chang, and Xia Hu. "Couple Variational Recurrent Collaborative Filtering." Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining. ACM, 2019. ([Download](https://www.kdd.org/kdd2019/accepted-papers/view/coupled-variational-recurrent-collaborative-filtering))
+
+Biblatex entry:
+
+    @inproceedings{song2019coupled,
+      title={Coupled Variational Recurrent Collaborative Filtering},
+      author=Song, Qingquan and Chang, Shiyu and Hu, Xia},
+      booktitle={Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery \& Data Mining},
+      pages={335--343},
+      year={2019},
+      organization={ACM}
+    }
+    
