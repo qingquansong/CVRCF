@@ -38,7 +38,7 @@ Biblatex entry:
     @inproceedings{song2019coupled,
       title={Coupled Variational Recurrent Collaborative Filtering},
       author=Song, Qingquan and Chang, Shiyu and Hu, Xia},
-      booktitle={Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery \& Data Mining},
+      booktitle={Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining},
       pages={335--343},
       year={2019},
       organization={ACM}
